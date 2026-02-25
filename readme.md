@@ -1,4 +1,4 @@
-# life-scripts
+# Life Scripts
 
 A collection of scripts designed to hack some data of parts of my life. 
 
@@ -11,4 +11,4 @@ A collection of scripts designed to hack some data of parts of my life.
 
 ## General Setup
 
-Each script resides in its own subdirectory with a dedicated `README.md`# life-scripts
+Each script resides in its own subdirectory with a dedicated `README.md`
