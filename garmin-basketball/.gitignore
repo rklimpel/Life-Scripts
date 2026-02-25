@@ -1,0 +1,5 @@
+.venv
+garmin-credentials.json
+google-credentials.json
+synced_events.json
+token.json
