@@ -13,8 +13,8 @@ from garminconnect import Garmin
 # ==========================================
 DRY_RUN = False  
 
-SEARCH_START_DATE = "2025-12-11"
-SEARCH_END_DATE = "2025-12-31"
+SEARCH_START_DATE = "2024-01-01"
+SEARCH_END_DATE = "2024-08-31"
 
 SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
 SYNC_STATE_FILE = 'synced_events.json'
@@ -40,7 +40,7 @@ def is_game_event(summary: str) -> bool:
 def is_basketball_event(summary: str) -> bool:
     if not summary:
         return False
-    keywords = ["🏀", "Basketballtraining", "Basketball", "(Heim)", "(Auswärts)"]
+    keywords = ["🏀", "Basketballtraining", "Basketball", "Training", "(Heim)", "(Auswärts)"]
     return any(keyword in summary for keyword in keywords)
 
 def get_garmin_weight(garmin_client, date_iso: str) -> float:
@@ -181,19 +181,33 @@ def main():
 
     print(f"Suche Termine von {time_min} bis {time_max}...\n")
     
-    events_result = service.events().list(
-        calendarId='primary', 
-        timeMin=time_min,
-        timeMax=time_max,
-        singleEvents=True,
-        orderBy='startTime'
-    ).execute()
+    events = []
+    page_token = None
     
-    events = events_result.get('items', [])
+    # Loop, um alle Seiten der API-Antwort abzugreifen
+    while True:
+        events_result = service.events().list(
+            calendarId='primary', 
+            timeMin=time_min,
+            timeMax=time_max,
+            singleEvents=True,
+            orderBy='startTime',
+            pageToken=page_token  # Hier wird der Token für die nächste Seite übergeben
+        ).execute()
+        
+        # Füge die gefundenen Items der Gesamtliste hinzu
+        events.extend(events_result.get('items', []))
+        
+        # Prüfen, ob es noch eine weitere Seite gibt
+        page_token = events_result.get('nextPageToken')
+        if not page_token:
+            break
 
     if not events:
-        print("Keine relevanten Termine gefunden.")
+        print("Keine relevanten Termine im angegebenen Zeitraum gefunden.")
         return
+
+    print(f"Insgesamt {len(events)} Kalendereinträge gefunden. Starte Filterung...")
 
     for event in events:
         event_id = event['id']
