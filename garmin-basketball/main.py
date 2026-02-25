@@ -9,7 +9,7 @@ from googleapiclient.discovery import build
 from garminconnect import Garmin
 
 # ==========================================
-# KONFIGURATION
+# Config
 # ==========================================
 DRY_RUN = False  
 
@@ -23,7 +23,7 @@ GARMIN_CONFIG_FILE = 'garmin-credentials.json'
 FALLBACK_WEIGHT_KG = 100.0  
 
 # ==========================================
-# HILFSFUNKTIONEN
+# Helper
 # ==========================================
 
 def load_garmin_credentials():
@@ -52,7 +52,6 @@ def get_garmin_weight(garmin_client, date_iso: str) -> float:
             if 'totalAverage' in body_comp and 'weight' in body_comp['totalAverage']:
                 weight_val = body_comp['totalAverage']['weight']
                 
-                # FIX: Prüfen, ob der Wert nicht 'None' (null in JSON) ist
                 if weight_val is not None:
                     weight = float(weight_val)
                     if weight > 300: 
@@ -67,7 +66,7 @@ def get_garmin_weight(garmin_client, date_iso: str) -> float:
 def calculate_base_calories(summary: str, duration_minutes: float, weight_kg: float) -> float:
     """Berechnet Kalorien basierend auf prozentualer Zeiteinteilung und dynamischem Gewicht."""
     if is_game_event(summary):
-        # Prozentuale Aufteilung der Brutto-Zeit für realistischere Skalierung
+
         warmup_mins = duration_minutes * 0.35
         game_mins = duration_minutes * 0.20
         rest_mins = duration_minutes * 0.45
@@ -78,7 +77,6 @@ def calculate_base_calories(summary: str, duration_minutes: float, weight_kg: fl
         
         return cal_warmup + cal_game + cal_rest
     else:
-        # Standard-Training 1. Regio (8.0 MET)
         return (duration_minutes / 60.0) * 8.0 * weight_kg
 
 def get_post_workout_intensity_multiplier(garmin_client, end_dt: datetime) -> float:
@@ -153,7 +151,7 @@ def get_calendar_service():
     return build('calendar', 'v3', credentials=creds)
 
 # ==========================================
-# HAUPTPROGRAMM
+# Main
 # ==========================================
 
 def main():
@@ -184,7 +182,6 @@ def main():
     events = []
     page_token = None
     
-    # Loop, um alle Seiten der API-Antwort abzugreifen
     while True:
         events_result = service.events().list(
             calendarId='primary', 
@@ -192,13 +189,10 @@ def main():
             timeMax=time_max,
             singleEvents=True,
             orderBy='startTime',
-            pageToken=page_token  # Hier wird der Token für die nächste Seite übergeben
+            pageToken=page_token 
         ).execute()
         
-        # Füge die gefundenen Items der Gesamtliste hinzu
         events.extend(events_result.get('items', []))
-        
-        # Prüfen, ob es noch eine weitere Seite gibt
         page_token = events_result.get('nextPageToken')
         if not page_token:
             break
@@ -222,7 +216,6 @@ def main():
         if not start_str or not end_str:
             continue
 
-        # Parse und korrigiere Timezone (lokale Zeit für Garmin Upload)
         start_dt_utc = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
         end_dt_utc = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
         
@@ -236,41 +229,35 @@ def main():
         event_type_str = "SPIEL" if is_game_event(summary) else "TRAINING"
         print(f"\n--- Verarbeite [{event_type_str}]: {summary} ({start_dt_local.strftime('%d.%m.%Y %H:%M')}) ---")
         
-        # 1. Gewicht abrufen
         current_weight = get_garmin_weight(garmin_client, date_iso)
         print(f"  [Körperdaten] Berechne mit {current_weight} kg.")
 
-        # 2. Basis-Kalorien berechnen
         base_calories = calculate_base_calories(summary, duration_min, current_weight)
         
-        # 3. Multiplikator über Garmin Stress-Daten ermitteln
         multiplier = get_post_workout_intensity_multiplier(garmin_client, end_dt_utc)
 
-        # 4. Finale Kalorien
         final_calories = int(base_calories * multiplier)
         
         print(f"  -> Dauer: {int(duration_min)} Min, Basis: {int(base_calories)} kcal, Final: {final_calories} kcal")
 
         if not DRY_RUN:
             try:
-                # Wir bauen das Payload exakt wie in der Library auf, aber mit unseren Anpassungen
                 payload = {
                     "activityTypeDTO": {"typeKey": "basketball"},
                     "accessControlRuleDTO": {"typeId": 2, "typeKey": "private"},
                     "timeZoneUnitDTO": {"unitKey": "Europe/Berlin"},
                     "activityName": summary,
                     "metadataDTO": {
-                        "autoCalcCalories": False, # WICHTIG: Überschreibt den Garmin-Standard
+                        "autoCalcCalories": False, 
                     },
                     "summaryDTO": {
                         "startTimeLocal": start_dt_local.strftime("%Y-%m-%dT%H:%M:%S.000"),
                         "distance": 0.0,
                         "duration": float(duration_sec),
-                        "calories": float(final_calories) # WICHTIG: Unsere berechneten Kalorien
+                        "calories": float(final_calories) 
                     },
                 }
 
-                # Nutzt die zugrundeliegende Methode der Library
                 garmin_client.create_manual_activity_from_json(payload)
                 
                 save_synced_id(event_id)
