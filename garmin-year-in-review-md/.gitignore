@@ -1,0 +1,7 @@
+.venv
+garmin-credentials.json
+garmin_config.json
+images/
+garmin_activities*.json
+jahresrueckblick_*.md
+year_review_*.md
