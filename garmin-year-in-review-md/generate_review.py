@@ -7,17 +7,16 @@ import matplotlib
 matplotlib.use('Agg')  # Headless mode for macOS
 import matplotlib.pyplot as plt
 import seaborn as sns
-from datetime import datetime, timedelta
+from datetime import datetime
+
 from garminconnect import Garmin
 
 # ==========================================
 # CONFIGURATION & STYLING
 # ==========================================
-TARGET_YEAR = 2025
+TARGET_YEARS = [2024]  # Passe diese Liste an deine gewünschten Jahre an
 GARMIN_CONFIG_FILE = 'garmin_config.json'
-CACHE_FILE = f'garmin_activities_{TARGET_YEAR}.json'
-OUTPUT_MD = f'year_review_{TARGET_YEAR}.md'
-IMG_DIR = 'images'
+OUT_BASE_DIR = 'out'
 
 BASE_RESTING_CALORIES = 2450  
 
@@ -55,18 +54,19 @@ def load_garmin_credentials():
         data = json.load(f)
         return data.get('email'), data.get('password')
 
-def fetch_activities():
-    if os.path.exists(CACHE_FILE):
-        with open(CACHE_FILE, 'r') as f:
+def fetch_activities(year):
+    cache_file = f'garmin_activities_{year}.json'
+    if os.path.exists(cache_file):
+        with open(cache_file, 'r') as f:
             return json.load(f)
 
-    print("No cache found. Fetching from Garmin...")
+    print(f"No cache found for {year}. Fetching from Garmin...")
     email, password = load_garmin_credentials()
     client = Garmin(email, password)
     client.login()
 
-    activities = client.get_activities_by_date(f"{TARGET_YEAR}-01-01", f"{TARGET_YEAR}-12-31")
-    with open(CACHE_FILE, 'w') as f:
+    activities = client.get_activities_by_date(f"{year}-01-01", f"{year}-12-31")
+    with open(cache_file, 'w') as f:
         json.dump(activities, f)
     return activities
 
@@ -76,19 +76,18 @@ def get_sport_color(sport):
 # ==========================================
 # VISUALIZATION (CHARTS)
 # ==========================================
-def generate_charts(df: pd.DataFrame):
-    if not os.path.exists(IMG_DIR):
-        os.makedirs(IMG_DIR)
+def generate_charts(df: pd.DataFrame, year: int, img_dir: str):
+    if not os.path.exists(img_dir):
+        os.makedirs(img_dir)
         
-    print("Starting chart generation...")
+    print(f"[{year}] Starting chart generation...")
 
     # --- 1. DONUT CHART ---
-    print("  -> Generating 1/4: Donut Chart (Sport Distribution)...")
+    print(f"  -> [{year}] Generating 1/4: Donut Chart...")
     total_hours = df['duration_hours'].sum()
     sport_hours = df.groupby('sport')['duration_hours'].sum()
     sport_hours_pct = sport_hours / total_hours
     
-    # Everything under 5% becomes "Other"
     sports_to_keep = sport_hours_pct[sport_hours_pct >= 0.05].index
     df['sport_donut'] = df['sport'].where(df['sport'].isin(sports_to_keep), 'Other')
     donut_data = df.groupby('sport_donut')['duration_hours'].sum().sort_values(ascending=False)
@@ -103,12 +102,12 @@ def generate_charts(df: pd.DataFrame):
         wedgeprops=dict(width=0.3, edgecolor='w')
     )
     ax.set_title(f"Training Time by Discipline (Cut-off < 5%)", fontsize=16, weight='bold')
-    plt.savefig(f"{IMG_DIR}/sport_distribution_donut.png", dpi=150, facecolor=CHART_BG, bbox_inches='tight')
+    plt.savefig(f"{img_dir}/sport_distribution_donut.png", dpi=150, facecolor=CHART_BG, bbox_inches='tight')
     plt.close()
 
     # --- 2. LINE CHART ---
-    print("  -> Generating 2/4: Line Chart (Calorie Balance)...")
-    full_year = pd.date_range(start=f'{TARGET_YEAR}-01-01', end=f'{TARGET_YEAR}-12-31')
+    print(f"  -> [{year}] Generating 2/4: Line Chart...")
+    full_year = pd.date_range(start=f'{year}-01-01', end=f'{year}-12-31')
     daily_cal = df.groupby(df['start_time'].dt.date)['calories'].sum().reset_index()
     daily_cal['start_time'] = pd.to_datetime(daily_cal['start_time'])
     daily_cal.set_index('start_time', inplace=True)
@@ -125,11 +124,11 @@ def generate_charts(df: pd.DataFrame):
     ax.set_title("Calorie Balance: Total Expenditure & Training", fontsize=16, weight='bold')
     ax.set_ylabel("Total kcal / Day")
     plt.legend(loc='upper left')
-    plt.savefig(f"{IMG_DIR}/calorie_burn_trend.png", dpi=150, facecolor=CHART_BG, bbox_inches='tight')
+    plt.savefig(f"{img_dir}/calorie_burn_trend.png", dpi=150, facecolor=CHART_BG, bbox_inches='tight')
     plt.close()
 
     # --- 3. HEATMAP ---
-    print("  -> Generating 3/4: Heatmap (Time of Day & Duration)...")
+    print(f"  -> [{year}] Generating 3/4: Heatmap...")
     heatmap_records = []
     for _, row in df.iterrows():
         start = row['start_time']
@@ -170,11 +169,11 @@ def generate_charts(df: pd.DataFrame):
         ax.set_title("Training Time Distribution (Exact Duration per Hour)", fontsize=16, weight='bold')
         ax.set_ylabel("")
         ax.set_xlabel("Time of Day")
-        plt.savefig(f"{IMG_DIR}/time_of_day_heatmap.png", dpi=150, facecolor=CHART_BG, bbox_inches='tight')
+        plt.savefig(f"{img_dir}/time_of_day_heatmap.png", dpi=150, facecolor=CHART_BG, bbox_inches='tight')
         plt.close()
 
     # --- 4. STACKED BAR CHART (MONTHLY PROGRESSION) ---
-    print("  -> Generating 4/4: Bar Chart (Monthly Progression)...")
+    print(f"  -> [{year}] Generating 4/4: Bar Chart...")
     months_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
     
     df_pivot = df.pivot_table(index='month_name', columns='sport', values='duration_hours', aggfunc='sum', fill_value=0)
@@ -189,15 +188,15 @@ def generate_charts(df: pd.DataFrame):
     plt.xticks(rotation=0)
     
     plt.legend(title='Discipline', bbox_to_anchor=(1.05, 1), loc='upper left')
-    plt.savefig(f"{IMG_DIR}/monthly_stacked_bar.png", dpi=150, facecolor=CHART_BG, bbox_inches='tight')
+    plt.savefig(f"{img_dir}/monthly_stacked_bar.png", dpi=150, facecolor=CHART_BG, bbox_inches='tight')
     plt.close()
 
-    print("Charts generated successfully.")
+    print(f"[{year}] Charts generated successfully.")
 
 # ==========================================
 # MARKDOWN GENERATOR
 # ==========================================
-def generate_markdown(df: pd.DataFrame):
+def generate_markdown(df: pd.DataFrame, year: int, output_md: str):
     total_hours = df['duration_hours'].sum()
     total_activities = len(df)
     total_distance_km = df['distance_km'].sum()
@@ -206,21 +205,21 @@ def generate_markdown(df: pd.DataFrame):
     
     # Calculate consistency metrics
     active_dates = pd.Series(df['start_time'].dt.date.unique()).sort_values()
-    full_year_dates = pd.date_range(start=f'{TARGET_YEAR}-01-01', end=f'{TARGET_YEAR}-12-31').date
+    full_year_dates = pd.date_range(start=f'{year}-01-01', end=f'{year}-12-31').date
     
     rest_days = len(full_year_dates) - len(active_dates)
     
     # Calculate longest streak
     is_active = pd.Series(full_year_dates).isin(active_dates)
     streak_groups = (~is_active).cumsum()
-    max_streak = is_active.groupby(streak_groups).sum().max()
+    max_streak = is_active.groupby(streak_groups).sum().max() if not is_active.empty else 0
     
     # Highlights
-    longest_dur = df.loc[df['duration_hours'].idxmax()]
-    longest_dist = df.loc[df['distance_km'].idxmax()]
-    most_cals = df.loc[df['calories'].idxmax()]
+    longest_dur = df.loc[df['duration_hours'].idxmax()] if not df.empty else None
+    longest_dist = df.loc[df['distance_km'].idxmax()] if not df.empty else None
+    most_cals = df.loc[df['calories'].idxmax()] if not df.empty else None
 
-    # Cycling specific highlights (only 'Cycling')
+    # Cycling specific highlights
     cycling_df = df[df['sport'] == 'Cycling']
     fastest_ride = None
     
@@ -230,50 +229,57 @@ def generate_markdown(df: pd.DataFrame):
             fastest_ride = valid_speed_rides.loc[valid_speed_rides['average_speed_kmh'].idxmax()]
 
     md = []
-    md.append(f"# {TARGET_YEAR} Year in Review: Basketball & Endurance\n")
-    md.append(f"Sport in {TARGET_YEAR} was characterized by a clear split: the basketball season in the 1. Regionalliga and building aerobic base endurance on the bike. With the addition of a road bike to my gravel setup, the focus shifted toward longer distances and early steps into ultra-bikepacking.\n")
     
-    md.append("## 📊 Annual Statistics\n")
+    md.append(f"# {year} Year in Review: Basketball & Endurance\n")
+    
+    md.append("## Annual Statistics\n")
     md.append(f"| Total Time | Activities | Total Distance | Elevation Gain | Active Calories |")
     md.append(f"| :--- | :--- | :--- | :--- | :--- |")
     md.append(f"| **{total_hours:.1f} h** | **{total_activities}** | **{total_distance_km:.0f} km** | **{total_elevation:.0f} m** | **{total_active_calories:,.0f} kcal** |\n")
 
-    md.append("### Consistency & Recovery")
+    md.append("### Consistency & Recovery\n")
     md.append(f"- **Longest Active Streak:** {int(max_streak)} days")
     md.append(f"- **Full Rest Days:** {rest_days} days\n")
 
-    md.append("## 🏆 Season Highlights\n")
-    md.append(f"- ⏱️ **Longest Workout:** {longest_dur['duration_hours']:.1f} h on {longest_dur['start_time'].strftime('%m/%d')} ({longest_dur['sport']})")
-    if longest_dist['distance_km'] > 0:
+    md.append("## Season Highlights\n")
+    if longest_dur is not None:
+        md.append(f"- ⏱️ **Longest Workout:** {longest_dur['duration_hours']:.1f} h on {longest_dur['start_time'].strftime('%m/%d')} ({longest_dur['sport']})")
+    if longest_dist is not None and longest_dist['distance_km'] > 0:
         md.append(f"- 📏 **Max Distance:** {longest_dist['distance_km']:.1f} km on {longest_dist['start_time'].strftime('%m/%d')} ({longest_dist['sport']})")
-    md.append(f"- 🔥 **Highest Burn:** {most_cals['calories']:.0f} kcal in a single session on {most_cals['start_time'].strftime('%m/%d')}")
+    if most_cals is not None:
+        md.append(f"- 🔥 **Highest Burn:** {most_cals['calories']:.0f} kcal in a single session on {most_cals['start_time'].strftime('%m/%d')}")
     if fastest_ride is not None:
         md.append(f"- 🚀 **Fastest Ride (>50km):** {fastest_ride['average_speed_kmh']:.1f} km/h avg over {fastest_ride['distance_km']:.1f} km on {fastest_ride['start_time'].strftime('%m/%d')}\n")
 
-    md.append("## 📈 Calorie Balance & Training Load")
-    md.append("This chart shows training calories stacked on top of the daily resting metabolic rate (~2,450 kcal). The red trend line (14-day average) visualizes intensity control: heavy training blocks alternating with necessary tapering and recovery phases.\n")
-    md.append(f"![Calorie Trend]({IMG_DIR}/calorie_burn_trend.png)\n")
+    md.append("## Calorie Balance: Total Expenditure & Training\n")
+    md.append(f"![Calorie Trend](images/calorie_burn_trend.png)\n")
 
-    md.append("## ⏰ Training Rhythm")
-    md.append("The distribution of load throughout the week follows a fixed pattern: Team practices in the gym take up the late evening hours during the week. Weekends are primarily used for long endurance rides.\n")
-    md.append(f"![Time of Day Heatmap]({IMG_DIR}/time_of_day_heatmap.png)\n")
+    md.append("## Training Time Distribution (Exact Duration per Hour)\n")
+    md.append(f"![Time of Day Heatmap](images/time_of_day_heatmap.png)\n")
 
-    md.append("## 📉 Discipline Distribution\n")
-    md.append("Training volume is primarily split between Basketball and Cycling. Everyday bike commuting is tracked separately. Supplementary strength training serves injury prevention and athleticism.\n")
-    md.append(f"![Monthly Progression]({IMG_DIR}/monthly_stacked_bar.png)\n")
-    md.append(f"![Donut Chart]({IMG_DIR}/sport_distribution_donut.png)\n")
+    md.append("## Monthly Training Hours by Discipline\n")
+    md.append(f"![Monthly Progression](images/monthly_stacked_bar.png)\n")
+    
+    md.append("## Training Time by Discipline (Cut-off < 5%)\n")
+    md.append(f"![Donut Chart](images/sport_distribution_donut.png)\n")
 
     md.append("---\n*Generated via Python using raw data from the Garmin API.*")
     
-    with open(OUTPUT_MD, 'w', encoding='utf-8') as f:
+    with open(output_md, 'w', encoding='utf-8') as f:
         f.write("\n".join(md))
     
-    print(f"Markdown created successfully: {OUTPUT_MD}")
+    print(f"[{year}] Markdown created successfully: {output_md}")
 
-def main():
-    raw_data = fetch_activities()
+def process_year(year: int):
+    raw_data = fetch_activities(year)
     if not raw_data:
+        print(f"[{year}] No activities found.")
         return
+
+    # Folder setup
+    year_dir = os.path.join(OUT_BASE_DIR, str(year))
+    img_dir = os.path.join(year_dir, 'images')
+    output_md = os.path.join(year_dir, f'year_review_{year}.md')
 
     df = pd.DataFrame(raw_data)
     
@@ -300,8 +306,18 @@ def main():
     df['start_time'] = pd.to_datetime(df['startTimeLocal'])
     df['month_name'] = df['start_time'].dt.strftime('%b')
 
-    generate_charts(df)
-    generate_markdown(df)
+    generate_charts(df, year, img_dir)
+    generate_markdown(df, year, output_md)
+
+def main():
+    if not os.path.exists(OUT_BASE_DIR):
+        os.makedirs(OUT_BASE_DIR)
+
+    for year in TARGET_YEARS:
+        print(f"\n{'='*40}")
+        print(f"Processing Year: {year}")
+        print(f"{'='*40}")
+        process_year(year)
 
 if __name__ == '__main__':
     main()
