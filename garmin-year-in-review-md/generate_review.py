@@ -1,6 +1,7 @@
 import os
 import json
 import sys
+import argparse
 import pandas as pd
 import numpy as np
 import matplotlib
@@ -14,7 +15,6 @@ from garminconnect import Garmin
 # ==========================================
 # CONFIGURATION & STYLING
 # ==========================================
-TARGET_YEARS = [2024]  # Passe diese Liste an deine gewünschten Jahre an
 GARMIN_CONFIG_FILE = 'garmin_config.json'
 OUT_BASE_DIR = 'out'
 
@@ -311,10 +311,14 @@ def process_year(year: int):
 
 def main():
     if not os.path.exists(OUT_BASE_DIR):
+    parser = argparse.ArgumentParser(description="Generate Garmin Year in Review")
+    parser.add_argument('years', type=int, nargs='+', help='Years to process (e.g., 2023 2024)')
+    args = parser.parse_args()
+
+    if not os.path.exists(OUT_BASE_DIR):
         os.makedirs(OUT_BASE_DIR)
 
-    for year in TARGET_YEARS:
-        print(f"\n{'='*40}")
+    for year in args.years
         print(f"Processing Year: {year}")
         print(f"{'='*40}")
         process_year(year)

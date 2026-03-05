@@ -1,6 +1,7 @@
 import os
 import json
 import sys
+import argparse
 from datetime import datetime, timedelta, timezone
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -12,9 +13,6 @@ from garminconnect import Garmin
 # Config
 # ==========================================
 DRY_RUN = False  
-
-SEARCH_START_DATE = "2024-01-01"
-SEARCH_END_DATE = "2024-08-31"
 
 SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
 SYNC_STATE_FILE = 'synced_events.json'
@@ -142,9 +140,15 @@ def get_calendar_service():
         creds = Credentials.from_authorized_user_file('token.json', SCOPES)
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+            try:
+                creds.refresh(Request())
+            except Exception:
+                print("\n[Google API] Das Token ist abgelaufen oder ungültig. Es wurde gelöscht, bitte in dem sich öffnenden Browser-Fenster neu authentifizieren.\n")
+                os.remove('token.json')
+                flow = InstalledAppFlow.from_client_secrets_file('google-credentials.json', SCOPES)
+                creds = flow.run_local_server(port=0)
         else:
-            flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+            flow = InstalledAppFlow.from_client_secrets_file('google-credentials.json', SCOPES)
             creds = flow.run_local_server(port=0)
         with open('token.json', 'w') as token:
             token.write(creds.to_json())
@@ -155,6 +159,16 @@ def get_calendar_service():
 # ==========================================
 
 def main():
+    parser = argparse.ArgumentParser(description="Sync basketball events from Google Calendar to Garmin")
+    parser.add_argument('--start', type=str, help='Start date (YYYY-MM-DD)', default=None)
+    parser.add_argument('--end', type=str, help='End date (YYYY-MM-DD)', default=None)
+    parser.add_argument('--dry-run', action='store_true', help='Enable dry run mode (no actual upload)')
+    args = parser.parse_args()
+
+    global DRY_RUN
+    if args.dry_run:
+        DRY_RUN = True
+
     if DRY_RUN:
         print("=== DRY RUN MODUS IST AKTIV ===\n")
     
@@ -168,9 +182,9 @@ def main():
     synced_ids = load_synced_ids()
 
     now = datetime.now(timezone.utc)
-    if SEARCH_START_DATE and SEARCH_END_DATE:
-        start_dt_user = datetime.strptime(SEARCH_START_DATE, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-        end_dt_user = datetime.strptime(SEARCH_END_DATE, "%Y-%m-%d").replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
+    if args.start and args.end:
+        start_dt_user = datetime.strptime(args.start, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        end_dt_user = datetime.strptime(args.end, "%Y-%m-%d").replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
         time_min = start_dt_user.isoformat()
         time_max = end_dt_user.isoformat()
     else:

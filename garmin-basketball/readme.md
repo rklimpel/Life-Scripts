@@ -32,4 +32,15 @@ pip install garminconnect google-api-python-client google-auth-httplib2 google-a
 ```
 
 ### 3. Run
-Run that stuff with python.
+Run the script with python. You can optionally specify a date range and use a dry-run mode:
+
+```bash
+# Sync last 7 days (default)
+python3 sync_basketball.py
+
+# Sync specific date range
+python3 sync_basketball.py --start 2026-02-26 --end 2026-03-03
+
+# Test calculation without actually uploading to Garmin
+python3 sync_basketball.py --dry-run
+```

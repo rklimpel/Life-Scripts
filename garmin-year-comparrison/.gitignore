@@ -7,3 +7,4 @@ jahresrueckblick_*.md
 year_review_*.md
 out/
 data/
+__pycache__/
